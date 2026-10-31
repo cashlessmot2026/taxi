@@ -47,3 +47,15 @@ input:focus{border-color:#e6b422!important;box-shadow:0 0 0 4px rgba(255,203,67,
 .brand-logo{filter:drop-shadow(0 4px 10px rgba(0,0,0,.25));transition:transform .4s cubic-bezier(.22,1,.36,1)}
 .brand:hover .brand-logo{transform:rotate(-8deg) scale(1.06)}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* ===== Coordenadas y navegación ===== */
+.coord-input{margin-top:4px;font-size:12px!important;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#5b667a}
+.nav-targets{display:grid;gap:10px;margin-top:14px}
+.nav-target{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:#f7f9fc;border:1px solid #e6ebf3;border-radius:12px;padding:11px 13px}
+.nav-target-info{display:grid;gap:3px;min-width:0}
+.nav-target-info small{font-size:9px;letter-spacing:1.2px;font-weight:800;color:#8993a5}
+.nav-target-info code{font-size:12px;color:var(--navy);word-break:break-all}
+.nav-target-info span{font-size:12px;color:var(--navy)}
+.nav-target-actions{display:flex;flex-wrap:wrap;gap:7px}
+.offer-row{flex-wrap:wrap}
+.offer-main .nav-targets{margin-top:10px}
