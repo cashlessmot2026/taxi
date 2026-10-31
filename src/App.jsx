@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, BadgeCheck, CarFront, Check, CheckCircle2, ChevronRight, CircleHelp,
   Clock3, FileText, Gauge, KeyRound, LogOut, MapPin, Menu, Navigation, Phone,
-  Plus, Power, ShieldCheck, ShieldUser, Smartphone, Sparkles, UserRound, Users,
+  Plus, Power, ShieldCheck, ShieldAlert, Smartphone, Sparkles, UserRound, Users,
   Wallet, X, Zap
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from './supabase';
@@ -11,7 +11,7 @@ const statusLabel = { pending: 'Buscando conductor', accepted: 'Conductor asigna
 const money = (value) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value || 0);
 
 function Brand({ compact = false }) {
-  return <div className={`brand ${compact ? 'brand-compact' : ''}`}><span className="brand-mark"><CarFront size={22} strokeWidth={2.7}/></span><span>taxi<span className="brand-light">cerca</span></span></div>;
+  return <div className={`brand ${compact ? 'brand-compact' : ''}`}><img className="brand-logo" src={`${import.meta.env.BASE_URL}logo.png`} alt="Taxis Teleclub"/><span>Taxis<span className="brand-light"> Teleclub</span></span></div>;
 }
 
 function ConfigNotice() {
@@ -182,7 +182,7 @@ export default function App() {
   if (!isSupabaseConfigured) return <ConfigNotice/>;
   if (loading || (session && !profile && !profileError)) return <div className="loading-screen"><div className="loader-mark"><CarFront size={26}/></div><span>Preparando tu experiencia…</span></div>;
   if (!session) return <AuthScreen/>;
-  if (profileError || !profile) return <div className="loading-screen"><div className="error-state"><ShieldUser size={30}/><h2>No se pudo cargar tu perfil</h2><p>{profileError || 'El usuario inició sesión, pero no tiene un perfil asociado. Contacta a administración.'}</p><button className="btn btn-outline" onClick={signOut}>Cerrar sesión</button></div></div>;
+  if (profileError || !profile) return <div className="loading-screen"><div className="error-state"><ShieldAlert size={30}/><h2>No se pudo cargar tu perfil</h2><p>{profileError || 'El usuario inició sesión, pero no tiene un perfil asociado. Contacta a administración.'}</p><button className="btn btn-outline" onClick={signOut}>Cerrar sesión</button></div></div>;
   const role = profile.role;
   return <Shell profile={profile} role={role} onSignOut={signOut} active={role === 'admin' ? 'Panel' : role === 'driver' ? 'Panel' : 'Inicio'}>{role === 'admin' ? <AdminDashboard profile={profile}/> : role === 'driver' ? <DriverDashboard profile={profile}/> : <UserDashboard profile={profile}/>}</Shell>;
 }
