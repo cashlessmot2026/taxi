@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, BadgeCheck, CarFront, Check, CheckCircle2, ChevronRight, CircleHelp,
   Clock3, FileText, Gauge, KeyRound, LogOut, MapPin, Menu, Navigation, Phone,
-  Plus, Power, ShieldCheck, ShieldAlert, Smartphone, Sparkles, UserRound, Users,
+  Download, Plus, Power, ShieldCheck, ShieldAlert, Smartphone, Sparkles, UserRound, Users,
   Wallet, X, Zap
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from './supabase';
@@ -12,6 +12,27 @@ const money = (value) => new Intl.NumberFormat('es-CO', { style: 'currency', cur
 
 function Brand({ compact = false }) {
   return <div className={`brand ${compact ? 'brand-compact' : ''}`}><img className="brand-logo" src={`${import.meta.env.BASE_URL}logo.png`} alt="Taxis Teleclub"/><span>Taxis<span className="brand-light"> Teleclub</span></span></div>;
+}
+
+let deferredInstall = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredInstall = e; window.dispatchEvent(new Event('install-ready')); });
+  window.addEventListener('appinstalled', () => { deferredInstall = null; window.dispatchEvent(new Event('install-ready')); });
+}
+
+function InstallButton({ className = '' }) {
+  const [, force] = useState(0);
+  const [help, setHelp] = useState(false);
+  useEffect(() => { const f = () => force((n) => n + 1); window.addEventListener('install-ready', f); return () => window.removeEventListener('install-ready', f); }, []);
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (standalone) return null;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  async function install() {
+    if (deferredInstall) { deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; force((n) => n + 1); }
+    else setHelp(true);
+  }
+  return <><button type="button" className={`btn btn-install ${className}`} onClick={install}><Download size={16}/> Descargar app</button>
+    {help && <div className="install-help" role="dialog"><div className="install-card"><button className="icon-button install-close" onClick={() => setHelp(false)}><X size={18}/></button><img src={`${import.meta.env.BASE_URL}logo.png`} alt="" width="64" height="64"/><h3>Instala Taxis Teleclub</h3>{ios ? <p>En Safari pulsa el botón <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.</p> : <p>Abre el menú del navegador (⋮) y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>. Si no aparece, abre esta página en Chrome o Safari.</p>}</div></div>}</>;
 }
 
 function ConfigNotice() {
@@ -48,13 +69,13 @@ function AuthScreen() {
         <label>Contraseña<input required type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={form.password} onChange={change('password')} placeholder="Mínimo 10 caracteres" minLength={10}/></label>
         {error && <div className="alert error">{error}</div>}{notice && <div className="alert success">{notice}</div>}
         <button className="btn btn-primary btn-full" disabled={busy}>{busy ? 'Procesando…' : mode === 'login' ? 'Ingresar' : 'Crear cuenta'} <ArrowRight size={17}/></button>
-      </form><div className="auth-switch">{mode === 'login' ? '¿Todavía no tienes cuenta?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); }}> {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}</button></div><div className="auth-legal"><ShieldCheck size={15}/> Tus datos se protegen con autenticación y permisos en la base de datos.</div></div><div className="auth-bottom">© {new Date().getFullYear()} Taxi Cerca <span>·</span> Movilidad con confianza</div></div></div>;
+      </form><div className="auth-switch">{mode === 'login' ? '¿Todavía no tienes cuenta?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); }}> {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}</button></div><div className="install-row"><InstallButton/></div><div className="auth-legal"><ShieldCheck size={15}/> Tus datos se protegen con autenticación y permisos en la base de datos.</div></div><div className="auth-bottom">© {new Date().getFullYear()} Taxi Cerca <span>·</span> Movilidad con confianza</div></div></div>;
 }
 
 function Shell({ profile, role, onSignOut, children, active = 'Inicio' }) {
   const [menu, setMenu] = useState(false);
   const nav = role === 'admin' ? [{ label: 'Panel', icon: Gauge }, { label: 'Conductores', icon: Users }] : role === 'driver' ? [{ label: 'Panel', icon: Gauge }, { label: 'Mis documentos', icon: FileText }] : [{ label: 'Inicio', icon: Navigation }, { label: 'Mis viajes', icon: Clock3 }];
-  return <div className="app-shell"><aside className={`sidebar ${menu ? 'sidebar-open' : ''}`}><div className="side-brand"><Brand/></div><div className="side-caption">MENÚ PRINCIPAL</div><nav>{nav.map(({label, icon: Icon}) => <div className={`nav-item ${active === label ? 'nav-active' : ''}`} key={label}><Icon size={18}/>{label}{active === label && <span className="nav-indicator"/>}</div>)}</nav><div className="side-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={18}/></span><b>¿Necesitas ayuda?</b><p>Estamos para acompañarte.</p><a href="mailto:soporte@taxicerca.app">Contactar soporte <ArrowRight size={13}/></a></div><div className="side-profile"><div className="avatar">{(profile?.full_name || 'U').slice(0,1).toUpperCase()}</div><div className="profile-meta"><b>{profile?.full_name || 'Mi cuenta'}</b><span>{role === 'admin' ? 'Administrador' : role === 'driver' ? 'Conductor' : 'Pasajero'}</span></div><button className="icon-button" title="Cerrar sesión" onClick={onSignOut}><LogOut size={17}/></button></div></div></aside><main className="main-area"><header className="topbar"><button className="icon-button mobile-menu" onClick={() => setMenu(!menu)}><Menu size={21}/></button><div className="breadcrumb">Taxi Cerca <ChevronRight size={14}/><b>{active}</b></div><div className="top-right"><span className="online-pill"><i/> Sistema activo</span><div className="top-avatar">{(profile?.full_name || 'U').slice(0,1).toUpperCase()}</div></div></header><div className="page-content">{children}</div></main>{menu && <button className="menu-scrim" onClick={() => setMenu(false)} aria-label="Cerrar menú"/>}</div>;
+  return <div className="app-shell"><aside className={`sidebar ${menu ? 'sidebar-open' : ''}`}><div className="side-brand"><Brand/></div><div className="side-caption">MENÚ PRINCIPAL</div><nav>{nav.map(({label, icon: Icon}) => <div className={`nav-item ${active === label ? 'nav-active' : ''}`} key={label}><Icon size={18}/>{label}{active === label && <span className="nav-indicator"/>}</div>)}</nav><div className="side-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={18}/></span><b>¿Necesitas ayuda?</b><p>Estamos para acompañarte.</p><a href="mailto:soporte@taxicerca.app">Contactar soporte <ArrowRight size={13}/></a></div><div className="side-profile"><div className="avatar">{(profile?.full_name || 'U').slice(0,1).toUpperCase()}</div><div className="profile-meta"><b>{profile?.full_name || 'Mi cuenta'}</b><span>{role === 'admin' ? 'Administrador' : role === 'driver' ? 'Conductor' : 'Pasajero'}</span></div><button className="icon-button" title="Cerrar sesión" onClick={onSignOut}><LogOut size={17}/></button></div></div></aside><main className="main-area"><header className="topbar"><button className="icon-button mobile-menu" onClick={() => setMenu(!menu)}><Menu size={21}/></button><div className="breadcrumb">Taxi Cerca <ChevronRight size={14}/><b>{active}</b></div><div className="top-right"><InstallButton className="btn-install-small"/><span className="online-pill"><i/> Sistema activo</span><div className="top-avatar">{(profile?.full_name || 'U').slice(0,1).toUpperCase()}</div></div></header><div className="page-content">{children}</div></main>{menu && <button className="menu-scrim" onClick={() => setMenu(false)} aria-label="Cerrar menú"/>}</div>;
 }
 
 function SectionTitle({ kicker, title, subtitle, action }) { return <div className="section-title"><div><span className="eyebrow">{kicker}</span><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>{action}</div>; }
