@@ -1,15 +1,14 @@
 {
-  "name": "Taxi Cerca",
-  "short_name": "Taxi Cerca",
-  "start_url": "/",
-  "scope": "/",
+  "name": "Taxis Teleclub",
+  "short_name": "Teleclub",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#111a2e",
   "theme_color": "#111a2e",
   "description": "Solicita y administra servicios de taxi.",
   "icons": [
-    {"src": "/taxi-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "/taxi-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
-    {"src": "/taxi.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+    {"src": "taxi-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "taxi-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
   ]
 }

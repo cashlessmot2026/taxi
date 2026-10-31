@@ -1,15 +1,11 @@
-const CACHE = 'taxi-cerca-shell-v1';
-const CORE = ['/', '/manifest.webmanifest', '/taxi.svg', '/taxi-192.png', '/taxi-512.png'];
+const CACHE = 'taxi-cerca-shell-v2';
+const SCOPE = self.registration.scope;
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)));
-});
+self.addEventListener('install', (event) => { self.skipWaiting(); });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))
-    )
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())
   );
 });
 
@@ -18,10 +14,9 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        if (response.ok) { const copy = response.clone(); caches.open(CACHE).then((cache) => cache.put(event.request, copy)); }
         return response;
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/')))
+      .catch(() => caches.match(event.request).then((cached) => cached || caches.match(SCOPE)))
   );
 });
