@@ -1,9 +1,10 @@
-import { ArrowLeftRight, CreditCard } from 'lucide-react';
+import { ArrowLeftRight, Banknote, CreditCard } from 'lucide-react';
 
 const base = import.meta.env.BASE_URL;
 
 // Logos oficiales en /public/pay (Nequi, Bancolombia y Bre-B). Transferencia y datáfono usan íconos genéricos.
 export const PAYMENTS = [
+  { id: 'efectivo', label: 'Efectivo', icon: Banknote },
   { id: 'nequi', label: 'Nequi', logo: 'pay/nequi.png' },
   { id: 'bancolombia', label: 'Bancolombia', logo: 'pay/bancolombia.png' },
   { id: 'breb', label: 'Bre-B', logo: 'pay/breb.png', wide: true },

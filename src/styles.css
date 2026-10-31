@@ -114,3 +114,22 @@ button.nav-item:not(.nav-active){background:transparent}
 .ride-meta{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:14px;font-size:13px}
 .ride-meta>span,.ride-meta>a{display:inline-flex;align-items:center;gap:6px}
 .ride-meta .pay-badge{margin-top:0}
+
+/* ===== Buscador de lugares ===== */
+.place-search{position:relative;width:100%}
+.place-search input{width:100%}
+.place-list{position:absolute;left:-52px;right:-52px;top:calc(100% + 14px);z-index:30;margin:0;padding:6px;list-style:none;background:#fff;border:1px solid #e3e8f0;border-radius:14px;box-shadow:0 18px 44px rgba(17,26,46,.18);max-height:290px;overflow:auto;animation:rise .2s ease both}
+.place-list li{margin:0}
+.place-list button{display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;border:0;background:transparent;border-radius:10px;padding:10px 11px;cursor:pointer;font-family:inherit;color:#25344c;transition:background .15s}
+.place-list button:hover,.place-list button:focus-visible{background:#f3f6fb}
+.place-list button svg{flex:none;margin-top:2px;color:#d85b5b}
+.place-list b{display:block;font-size:13px;font-weight:800;color:#111a2e}
+.place-list small{display:block!important;font-size:11px!important;letter-spacing:0!important;font-weight:600!important;color:#7b8495!important;margin-top:2px}
+.place-note{padding:12px;font-size:12px;color:#7b8495;font-weight:700}
+@media(max-width:560px){.place-list{left:-40px;right:-14px}}
+
+/* ===== Habilitar / deshabilitar ===== */
+.row-actions{display:flex;flex-wrap:wrap;gap:6px}
+.btn-disable{background:#fff;color:#c0392b;border:1px solid #f1c9c5}.btn-disable:hover{background:#fdeceb}
+.btn-enable{background:#e3f6ee;color:#118a61;border:1px solid #bfe8d6}.btn-enable:hover{background:#d2f0e3}
+.row-disabled td{opacity:.62}.row-disabled td:last-child{opacity:1}

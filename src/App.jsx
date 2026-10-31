@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, BadgeCheck, CarFront, Check, CheckCircle2, ChevronRight, CircleHelp,
   Clock3, FileText, Gauge, KeyRound, LogOut, MapPin, Menu, Navigation, Phone,
-  Download, Pencil, Plus, Power, ShieldCheck, ShieldAlert, Smartphone, Sparkles, UserRound, Users,
+  Ban, Download, Pencil, Plus, Power, ShieldCheck, ShieldAlert, Smartphone, Sparkles, UserRound, Users,
   Wallet, X, Zap
 } from 'lucide-react';
 import { motion, animate } from 'motion/react';
@@ -152,6 +152,52 @@ function Shell({ profile, role, onSignOut, children, active, onNav }) {
 function SectionTitle({ kicker, title, subtitle, action }) { return <motion.div variants={fadeUp} className="section-title"><div><span className="eyebrow">{kicker}</span><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>{action}</motion.div>; }
 function EmptyState({ icon: Icon = CarFront, title, text }) { return <div className="empty-state"><span><Icon size={24}/></span><b>{title}</b><p>{text}</p></div>; }
 
+function PlaceInput({ value, onChange, onSelect, near }) {
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState('');
+  const typed = useRef(false);
+  const nearLat = near?.lat, nearLng = near?.lng;
+  useEffect(() => {
+    const q = value.trim();
+    if (!typed.current || q.length < 3) { setResults([]); setNote(''); setLoading(false); return; }
+    const ctl = new AbortController();
+    const timer = setTimeout(async () => {
+      setLoading(true); setNote('');
+      try {
+        const bias = nearLat != null ? `&lat=${nearLat}&lon=${nearLng}` : '';
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&bbox=-79.1,-4.3,-66.8,13.5${bias}`, { signal: ctl.signal });
+        if (!res.ok) throw new Error('http');
+        const data = await res.json();
+        const list = (data.features || []).map((f) => {
+          const pr = f.properties || {};
+          const [lng, lat] = f.geometry.coordinates;
+          const name = pr.name || pr.street || '';
+          const street = pr.name && pr.street ? `${pr.street}${pr.housenumber ? ` ${pr.housenumber}` : ''}` : '';
+          const detail = [street, pr.locality || pr.district, pr.city || pr.county, pr.state].filter(Boolean).filter((x, i, arr) => x !== name && arr.indexOf(x) === i).join(', ');
+          return { lat, lng, name, detail };
+        }).filter((x) => x.name);
+        setResults(list); setOpen(true);
+        if (!list.length) setNote('Sin resultados. Prueba con otro nombre o toca el mapa.');
+      } catch (e) {
+        if (e.name !== 'AbortError') { setResults([]); setNote('No se pudo buscar lugares ahora. Puedes tocar el mapa.'); setOpen(true); }
+      }
+      setLoading(false);
+    }, 400);
+    return () => { clearTimeout(timer); ctl.abort(); };
+  }, [value, nearLat, nearLng]);
+  function pick(r) { typed.current = false; setOpen(false); setResults([]); onSelect({ label: r.detail ? `${r.name}, ${r.detail}` : r.name, lat: r.lat, lng: r.lng }); }
+  return <div className="place-search">
+    <input value={value} onChange={(e) => { typed.current = true; onChange(e.target.value); setOpen(true); }} onFocus={() => { if (results.length) setOpen(true); }} onBlur={() => setTimeout(() => setOpen(false), 180)} onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }} placeholder="Nombre del lugar (ej. Centro Comercial Andino)" autoComplete="off"/>
+    {open && (loading || results.length > 0 || note) && <ul className="place-list" role="listbox">
+      {loading && <li className="place-note">Buscando lugares…</li>}
+      {results.map((r, i) => <li key={i} role="option"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(r)}><MapPin size={16}/><span><b>{r.name}</b>{r.detail && <small>{r.detail}</small>}</span></button></li>)}
+      {!loading && note && <li className="place-note">{note}</li>}
+    </ul>}
+  </div>;
+}
+
 function UserDashboard({ profile }) {
   const [pickup, setPickup] = useState('Mi ubicación actual');
   const [destination, setDestination] = useState('');
@@ -178,7 +224,7 @@ function UserDashboard({ profile }) {
   }
   async function cancelRide() { if (!ride) return; try { await rpc('cancel_my_ride', { p_ride_id: ride.id }); fetchRides(); } catch (err) { setError(err.message); } }
   const past = history.filter((r) => !['pending','accepted','in_progress'].includes(r.status));
-  return <Page><SectionTitle kicker="PANEL DEL PASAJERO" title={`Hola, ${(profile.full_name || '').split(' ')[0] || 'bienvenido'} 👋`} subtitle="Pide tu taxi en pocos pasos y sigue el estado de tu servicio."/><div className="user-grid"><div className="request-card"><div className="request-heading"><div><span className="eyebrow">NUEVO SERVICIO</span><h2>¿A dónde vamos hoy?</h2><p>Comparte tu ubicación y conecta con el taxi más cercano.</p></div><span className="request-icon"><CarFront size={24}/></span></div><form onSubmit={requestRide} className="ride-form"><label className="location-field"><span className="location-pin green-pin"><MapPin size={18}/></span><span className="field-content"><small>RECOGIDA</small><input value={pickup} onChange={(e) => setPickup(e.target.value)} placeholder="Punto de recogida"/><input className="coord-input" inputMode="decimal" value={pickupText} onChange={(e) => setPickupText(e.target.value)} placeholder="Coordenadas: 4.7110, -74.0721"/></span><button type="button" className="locate-btn" onClick={locate} title="Usar ubicación actual"><Navigation size={17}/></button></label><div className="location-connector"/><label className="location-field"><span className="location-pin red-pin"><MapPin size={18}/></span><span className="field-content"><small>DESTINO (OPCIONAL)</small><input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="¿A dónde te llevamos?"/><input className="coord-input" inputMode="decimal" value={destText} onChange={(e) => setDestText(e.target.value)} placeholder="Coordenadas de destino (opcional)"/></span></label><div className="location-hint">{coords ? <><CheckCircle2 size={14}/> Recogida: {fmtCoord(coords.lat, coords.lng)}{destCoords ? ` · Destino: ${fmtCoord(destCoords.lat, destCoords.lng)}` : destText.trim() ? ' · Destino con formato no válido' : ''}</> : <><MapPin size={14}/> Pulsa el botón de ubicación o escribe tus coordenadas</>}</div><div className="form-section-label pay-label">Método de pago</div><PayPicker value={payment} onChange={setPayment}/>{error && <div className="alert error">{error}</div>}<button className="btn btn-dark btn-full request-submit" disabled={loading || !!ride}>{loading ? 'Solicitando…' : ride ? 'Ya tienes un viaje activo' : 'Solicitar taxi'} <ArrowRight size={17}/></button></form></div><div className="side-stack"><div className="safety-card"><span className="safety-icon"><ShieldCheck size={22}/></span><h3>Viaja con tranquilidad</h3><p>Los conductores son registrados por la administración y sus documentos quedan asociados a su perfil.</p><div className="safety-foot"><BadgeCheck size={15}/> Conductores verificados por administración</div></div><div className="tip-card"><Sparkles size={18}/><div><b>Un viaje más simple</b><p>Tu solicitud se muestra primero al conductor disponible más cercano.</p></div></div></div></div>
+  return <Page><SectionTitle kicker="PANEL DEL PASAJERO" title={`Hola, ${(profile.full_name || '').split(' ')[0] || 'bienvenido'} 👋`} subtitle="Pide tu taxi en pocos pasos y sigue el estado de tu servicio."/><div className="user-grid"><div className="request-card"><div className="request-heading"><div><span className="eyebrow">NUEVO SERVICIO</span><h2>¿A dónde vamos hoy?</h2><p>Comparte tu ubicación y conecta con el taxi más cercano.</p></div><span className="request-icon"><CarFront size={24}/></span></div><form onSubmit={requestRide} className="ride-form"><label className="location-field"><span className="location-pin green-pin"><MapPin size={18}/></span><span className="field-content"><small>RECOGIDA</small><input value={pickup} onChange={(e) => setPickup(e.target.value)} placeholder="Punto de recogida"/><input className="coord-input" inputMode="decimal" value={pickupText} onChange={(e) => setPickupText(e.target.value)} placeholder="Coordenadas: 4.7110, -74.0721"/></span><button type="button" className="locate-btn" onClick={locate} title="Usar ubicación actual"><Navigation size={17}/></button></label><div className="location-connector"/><label className="location-field"><span className="location-pin red-pin"><MapPin size={18}/></span><span className="field-content"><small>DESTINO (OPCIONAL)</small><PlaceInput value={destination} onChange={setDestination} near={coords} onSelect={(pl) => { setDestination(pl.label); setDestText(fmtCoord(pl.lat, pl.lng)); setPickMode('dest'); }}/><input className="coord-input" inputMode="decimal" value={destText} onChange={(e) => setDestText(e.target.value)} placeholder="Coordenadas de destino (opcional)"/></span></label><div className="location-hint">{coords ? <><CheckCircle2 size={14}/> Recogida: {fmtCoord(coords.lat, coords.lng)}{destCoords ? ` · Destino: ${fmtCoord(destCoords.lat, destCoords.lng)}` : destText.trim() ? ' · Destino con formato no válido' : ''}</> : <><MapPin size={14}/> Pulsa el botón de ubicación o escribe tus coordenadas</>}</div><div className="form-section-label pay-label">Método de pago</div><PayPicker value={payment} onChange={setPayment}/>{error && <div className="alert error">{error}</div>}<button className="btn btn-dark btn-full request-submit" disabled={loading || !!ride}>{loading ? 'Solicitando…' : ride ? 'Ya tienes un viaje activo' : 'Solicitar taxi'} <ArrowRight size={17}/></button></form></div><div className="side-stack"><div className="safety-card"><span className="safety-icon"><ShieldCheck size={22}/></span><h3>Viaja con tranquilidad</h3><p>Los conductores son registrados por la administración y sus documentos quedan asociados a su perfil.</p><div className="safety-foot"><BadgeCheck size={15}/> Conductores verificados por administración</div></div><div className="tip-card"><Sparkles size={18}/><div><b>Un viaje más simple</b><p>Tu solicitud se muestra primero al conductor disponible más cercano.</p></div></div></div></div>
     <motion.section variants={fadeUp} className="content-card map-card"><div className="card-heading"><div><span className="eyebrow">MAPA</span><h2>Marca el punto en el mapa</h2><p>Elige qué quieres colocar y toca el mapa para poner el puntero.</p></div><div className="segmented"><button type="button" className={pickMode === 'pickup' ? 'seg-on' : ''} onClick={() => setPickMode('pickup')}><i className="dot dot-free"/> Recogida</button><button type="button" className={pickMode === 'dest' ? 'seg-on' : ''} onClick={() => setPickMode('dest')}><i className="dot dot-dest"/> Destino</button></div></div><MapView height={380} onPick={(lat, lng) => (pickMode === 'dest' ? setDestText : setPickupText)(fmtCoord(lat, lng))} markers={[...(coords ? [{ kind: 'pickup', lat: coords.lat, lng: coords.lng, label: 'Recogida' }] : []), ...(destCoords ? [{ kind: 'dest', lat: destCoords.lat, lng: destCoords.lng, label: 'Destino' }] : [])]}/><p className="map-hint"><MapPin size={14}/> {pickMode === 'dest' ? 'Toca el mapa para colocar el destino (B).' : 'Toca el mapa para colocar el punto de recogida (A).'} Las coordenadas se llenan solas arriba.</p></motion.section>
     {ride && <motion.section variants={fadeUp} className="content-card active-trip"><div className="card-heading"><div><span className="eyebrow">VIAJE ACTUAL</span><h2>Tu taxi está en proceso</h2></div><span className={`status-chip status-${ride.status}`}>{statusLabel[ride.status]}</span></div><div className="trip-route"><span className="route-icon"><MapPin size={17}/></span><div><small>RECOGIDA</small><b>{ride.pickup_label}</b></div><span className="route-arrow"><ArrowRight size={17}/></span><div><small>DESTINO</small><b>{ride.destination_label || 'Por definir'}</b></div></div>{ride.driver_info && <div className="assigned-driver"><span className="assigned-avatar"><CarFront size={18}/></span><div><b>{ride.driver_info.driver_name}</b><small>{[ride.driver_info.vehicle_make, ride.driver_info.vehicle_model, ride.driver_info.vehicle_color].filter(Boolean).join(' · ')} {ride.driver_info.plate ? `· ${ride.driver_info.plate}` : ''}</small></div>{ride.driver_info.driver_phone && <a href={`tel:${ride.driver_info.driver_phone}`}><Phone size={15}/> Llamar</a>}</div>}<div className="trip-bottom"><span>Solicitud #{ride.id.slice(0,8).toUpperCase()}</span><PayBadge method={ride.payment_method}/>{ride.status === 'pending' && <button className="btn btn-outline btn-small" onClick={cancelRide}>Cancelar solicitud</button>}</div></motion.section>}
     <motion.section variants={fadeUp} id="mis-viajes" className="content-card history-card"><div className="card-heading"><div><span className="eyebrow">ACTIVIDAD RECIENTE</span><h2>Mis viajes</h2></div><span className="count-badge">{history.length} registros</span></div>{past.length ? <div className="history-list">{past.slice(0,5).map((r) => <div className="history-row" key={r.id}><span className="history-icon"><CarFront size={18}/></span><div className="history-info"><b>{r.destination_label || r.pickup_label}</b><small>{new Date(r.created_at).toLocaleString('es-CO')}</small></div><span className={`status-chip status-${r.status}`}>{statusLabel[r.status]}</span></div>)}</div> : <EmptyState title="Todavía no tienes viajes" text="Cuando solicites un taxi, aquí verás tu actividad."/>}</motion.section></Page>;
@@ -219,7 +265,7 @@ function DriverDashboard({ profile }) {
 const DEFAULT_DOCS = [{ title: 'Documento de identidad', url: '' }, { title: 'Licencia de conducción', url: '' }, { title: 'Documentos del vehículo', url: '' }];
 const blankForm = () => ({ full_name: '', email: '', phone: '', username: '', password: '', vehicle_make: '', vehicle_model: '', vehicle_color: '', plate: '', documents: DEFAULT_DOCS.map((d) => ({ ...d })) });
 
-const DRIVER_STATE = { available: ['Disponible', 'ok'], in_service: ['En servicio', 'busy'], offline: ['Desconectado', 'off'] };
+const DRIVER_STATE = { disabled: ['Deshabilitado', 'off'], available: ['Disponible', 'ok'], in_service: ['En servicio', 'busy'], offline: ['Desconectado', 'off'] };
 function StateChip({ status }) {
   const [text, tone] = DRIVER_STATE[status] || DRIVER_STATE.offline;
   return <span className={`state-chip state-${tone}`}><i/>{text}</span>;
@@ -259,6 +305,7 @@ function AdminDashboard({ profile, view = 'Panel' }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState(blankForm);
+  const [togglingId, setTogglingId] = useState(null);
   const loadAll = useCallback(async () => {
     const [d, m, s] = await Promise.allSettled([rpc('admin_dashboard'), rpc('admin_live_map'), rpc('admin_services')]);
     if (d.status === 'fulfilled') { setDrivers(d.value.drivers || []); setUsersCount(d.value.users_count || 0); setRidesCount(d.value.rides_count || 0); }
@@ -289,9 +336,17 @@ function AdminDashboard({ profile, view = 'Panel' }) {
     } catch (err) { setError(err.message || 'No fue posible guardar el conductor.'); }
     finally { setBusy(false); }
   }
+  async function toggleActive(d) {
+    const enable = d.is_active === false;
+    if (!enable && !window.confirm(`¿Deshabilitar a ${d.full_name}? No podrá iniciar sesión ni recibir servicios.`)) return;
+    setTogglingId(d.id); setError(''); setSuccess('');
+    try { await rpc('admin_set_driver_active', { p_driver_id: d.id, p_active: enable }); setSuccess(`${d.full_name} ${enable ? 'habilitado' : 'deshabilitado'} correctamente.`); await loadAll(); }
+    catch (err) { setError(err.message); }
+    setTogglingId(null);
+  }
   const openCreate = () => { setError(''); setSuccess(''); if (showForm && !editingId) closeForm(); else { setEditingId(null); setForm(blankForm()); setShowForm(true); } };
   const inService = drivers.filter((d) => d.status === 'in_service').length;
-  const connected = drivers.filter((d) => d.status !== 'offline').length;
+  const connected = drivers.filter((d) => d.status === 'available' || d.status === 'in_service').length;
   const activeServices = services.filter((r) => ['pending', 'accepted', 'in_progress'].includes(r.status));
   const mapMarkers = [
     ...live.drivers.map((d) => ({ kind: d.status === 'in_service' ? 'busy' : 'free', lat: d.lat, lng: d.lng, label: `${d.full_name}${d.plate ? ` · ${d.plate}` : ''} — ${d.status === 'in_service' ? `En servicio${d.passenger_name ? ` con ${d.passenger_name}` : ''}` : 'Disponible'}` })),
@@ -302,13 +357,13 @@ function AdminDashboard({ profile, view = 'Panel' }) {
   if (view === 'Conductores') return <Page key="drivers"><SectionTitle kicker="TU EQUIPO" title="Conductores" subtitle="Consulta el estado de cada conductor, el servicio que presta, y modifica sus datos." action={<button className="btn btn-primary" onClick={openCreate}><Plus size={17}/> Crear conductor</button>}/>{alerts}
     <div className="admin-stats"><div className="admin-stat"><span className="stat-symbol stat-blue"><CarFront size={20}/></span><div><small>CONDUCTORES</small><strong><CountUp value={drivers.length}/></strong><span>Perfiles creados</span></div></div><div className="admin-stat"><span className="stat-symbol stat-green"><Power size={20}/></span><div><small>CONECTADOS</small><strong><CountUp value={connected}/></strong><span>Disponibles o en servicio</span></div></div><div className="admin-stat"><span className="stat-symbol stat-yellow"><Navigation size={20}/></span><div><small>EN SERVICIO</small><strong><CountUp value={inService}/></strong><span>Prestando un viaje ahora</span></div></div></div>
     {showForm && <motion.section variants={fadeUp} className="content-card create-driver-card"><div className="card-heading"><div><span className="eyebrow">{editingId ? 'EDITAR PERFIL' : 'NUEVO PERFIL'}</span><h2>{editingId ? 'Modificar conductor' : 'Registrar conductor'}</h2><p>{editingId ? 'Actualiza sus datos, vehículo y documentos. Deja la contraseña vacía para no cambiarla.' : 'La cuenta se crea con acceso de conductor y los documentos quedan asociados a su perfil.'}</p></div><button className="icon-button" onClick={closeForm}><X size={19}/></button></div><form onSubmit={saveDriver} className="admin-form"><div className="form-section-label"><UserRound size={16}/> Datos personales y acceso</div><div className="field-grid"><label>Nombre completo<input required value={form.full_name} onChange={(e) => setForm({...form, full_name:e.target.value})} placeholder="Nombre del conductor"/></label><label>Teléfono<input required value={form.phone} onChange={(e) => setForm({...form, phone:e.target.value})} placeholder="300 000 0000"/></label><label>Correo de acceso<input required={!editingId} type="email" value={form.email} onChange={(e) => setForm({...form, email:e.target.value})} placeholder="conductor@correo.com"/></label><label>{editingId ? 'Nueva contraseña (opcional)' : 'Contraseña temporal'}<input required={!editingId} type="password" minLength={5} autoComplete="new-password" value={form.password} onChange={(e) => setForm({...form, password:e.target.value})} placeholder={editingId ? 'Dejar vacío para no cambiarla' : 'Mínimo 5 caracteres'}/></label>{editingId && <label>Usuario (opcional)<input autoCapitalize="none" value={form.username} onChange={(e) => setForm({...form, username:e.target.value})} placeholder="usuario.conductor"/></label>}</div><div className="form-section-label"><CarFront size={16}/> Información del taxi</div><div className="field-grid three-fields"><label>Marca<input value={form.vehicle_make} onChange={(e) => setForm({...form, vehicle_make:e.target.value})} placeholder="Chevrolet"/></label><label>Modelo<input value={form.vehicle_model} onChange={(e) => setForm({...form, vehicle_model:e.target.value})} placeholder="Beat"/></label><label>Color<input value={form.vehicle_color} onChange={(e) => setForm({...form, vehicle_color:e.target.value})} placeholder="Amarillo"/></label><label>Placa<input value={form.plate} onChange={(e) => setForm({...form, plate:e.target.value.toUpperCase()})} placeholder="ABC123"/></label></div><div className="form-section-label"><FileText size={16}/> Documentos en Google Drive</div><p className="form-help">Pega enlaces compartidos que permitan la lectura al personal autorizado. No subas documentos directamente al código.</p><div className="documents-form">{form.documents.map((d, i) => <label key={i}>{d.title}<input type="url" value={d.url} onChange={(e) => setDoc(i, 'url', e.target.value)} placeholder="https://drive.google.com/file/d/…"/></label>)}</div><div className="form-actions"><button type="button" className="btn btn-outline" onClick={closeForm}>Cancelar</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Crear conductor'} <ArrowRight size={16}/></button></div></form></motion.section>}
-    <motion.section variants={fadeUp} className="content-card driver-management"><div className="card-heading"><div><span className="eyebrow">TODOS LOS CONDUCTORES</span><h2>Estado y detalles</h2></div><span className="count-badge">{drivers.length} perfiles</span></div>{drivers.length ? <div className="driver-table-wrap"><table className="driver-table"><thead><tr><th>CONDUCTOR</th><th>ESTADO</th><th>SERVICIO ACTUAL</th><th>VEHÍCULO</th><th>DOCUMENTOS</th><th></th></tr></thead><tbody>{drivers.map((d) => <tr key={d.id}>
+    <motion.section variants={fadeUp} className="content-card driver-management"><div className="card-heading"><div><span className="eyebrow">TODOS LOS CONDUCTORES</span><h2>Estado y detalles</h2></div><span className="count-badge">{drivers.length} perfiles</span></div>{drivers.length ? <div className="driver-table-wrap"><table className="driver-table"><thead><tr><th>CONDUCTOR</th><th>ESTADO</th><th>SERVICIO ACTUAL</th><th>VEHÍCULO</th><th>DOCUMENTOS</th><th></th></tr></thead><tbody>{drivers.map((d) => <tr key={d.id} className={d.is_active === false ? 'row-disabled' : ''}>
       <td><div className="table-person"><span className="avatar">{(d.full_name || 'C').slice(0, 1).toUpperCase()}</span><span><b>{d.full_name}</b><small>{d.email || d.username || d.phone || 'Sin contacto'}</small>{d.phone && <small>{d.phone}</small>}</span></div></td>
       <td><StateChip status={d.status}/>{d.status === 'offline' && d.last_seen && <small className="table-sub">Visto {fmtDate(d.last_seen)}</small>}</td>
       <td>{d.active_ride ? <div className="route-cell"><span><UserRound size={13}/> <b>{d.active_ride.passenger_name}</b>{d.active_ride.passenger_phone ? ` · ${d.active_ride.passenger_phone}` : ''}</span><span><MapPin size={13}/> {d.active_ride.pickup_label}</span><span><Navigation size={13}/> {d.active_ride.destination_label || 'Por definir'}</span><span className="route-meta"><span className={`status-chip status-${d.active_ride.status}`}>{statusLabel[d.active_ride.status]}</span><PayBadge method={d.active_ride.payment_method}/></span></div> : <span className="muted">Sin servicio</span>}</td>
       <td>{[d.driver_details?.vehicle_make, d.driver_details?.vehicle_model].filter(Boolean).join(' ') || 'Sin datos'}<small className="table-sub">{[d.driver_details?.vehicle_color, d.driver_details?.plate].filter(Boolean).join(' · ')}</small></td>
       <td><div className="doc-links">{(d.driver_documents || []).length ? d.driver_documents.map((doc) => <a href={doc.drive_url} target="_blank" rel="noreferrer" key={doc.id} title={doc.title}><FileText size={15}/></a>) : <span className="muted">Sin documentos</span>}</div></td>
-      <td><button type="button" className="btn btn-outline btn-small btn-edit" onClick={() => openEdit(d)}><Pencil size={14}/> Editar</button></td></tr>)}</tbody></table></div> : <EmptyState icon={Users} title="Aún no has creado conductores" text="Usa el botón Crear conductor para registrar el primer perfil."/>}</motion.section></Page>;
+      <td><div className="row-actions"><button type="button" className="btn btn-outline btn-small btn-edit" onClick={() => openEdit(d)}><Pencil size={14}/> Editar</button><button type="button" className={`btn btn-small ${d.is_active === false ? 'btn-enable' : 'btn-disable'}`} onClick={() => toggleActive(d)} disabled={togglingId === d.id}>{d.is_active === false ? <><Check size={14}/> Habilitar</> : <><Ban size={14}/> Deshabilitar</>}</button></div></td></tr>)}</tbody></table></div> : <EmptyState icon={Users} title="Aún no has creado conductores" text="Usa el botón Crear conductor para registrar el primer perfil."/>}</motion.section></Page>;
 
   if (view === 'Servicios') return <Page key="services"><SectionTitle kicker="OPERACIÓN" title="Servicios" subtitle="Cliente, conductor, estado y método de pago de cada servicio solicitado."/>{alerts}
     <motion.section variants={fadeUp} className="content-card"><div className="card-heading"><div><span className="eyebrow">ÚLTIMOS 100</span><h2>Historial y servicios en curso</h2></div><span className="count-badge">{services.filter(RIDE_FILTERS.find((f) => f.id === filter).test).length} servicios</span></div><div className="filter-chips">{RIDE_FILTERS.map((f) => <button key={f.id} type="button" className={`chip ${filter === f.id ? 'chip-on' : ''}`} onClick={() => setFilter(f.id)}>{f.label}<b>{services.filter(f.test).length}</b></button>)}</div><ServicesTable rows={services.filter(RIDE_FILTERS.find((f) => f.id === filter).test)}/></motion.section></Page>;
@@ -341,3 +396,5 @@ export default function App() {
   const active = view || (role === 'user' ? 'Inicio' : 'Panel');
   return <Shell profile={profile} role={role} onSignOut={signOut} active={active} onNav={setView}>{role === 'admin' ? <AdminDashboard profile={profile} view={active}/> : role === 'driver' ? <DriverDashboard profile={profile}/> : <UserDashboard profile={profile}/>}</Shell>;
 }
+
+export { PlaceInput };
