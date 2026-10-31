@@ -5,7 +5,8 @@ import {
   Download, Plus, Power, ShieldCheck, ShieldAlert, Smartphone, Sparkles, UserRound, Users,
   Wallet, X, Zap
 } from 'lucide-react';
-import { isSupabaseConfigured, supabase } from './supabase';
+import { isSupabaseConfigured } from './supabase';
+import { rpc, setToken, getToken } from './api';
 
 const statusLabel = { pending: 'Buscando conductor', accepted: 'Conductor asignado', in_progress: 'En camino', completed: 'Servicio finalizado', cancelled: 'Cancelado' };
 const money = (value) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value || 0);
@@ -39,7 +40,7 @@ function ConfigNotice() {
   return <div className="config-screen"><div className="config-card"><Brand/><span className="eyebrow">CONFIGURACIÓN INICIAL</span><h1>Conecta tu proyecto Supabase</h1><p>La aplicación ya está preparada. Para activar registros, acceso, conductores y viajes, agrega las credenciales públicas de tu proyecto en <code>.env.local</code>.</p><div className="code-panel"><div>VITE_SUPABASE_URL=https://tu-proyecto.supabase.co</div><div>VITE_SUPABASE_ANON_KEY=tu-clave-publica</div></div><p className="small-muted">No coloques aquí la clave <b>service_role</b> ni ninguna clave secreta. El panel de administración y la creación de conductores se protegen en el servidor.</p><a className="text-link" href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Abrir Supabase <ArrowRight size={15}/></a></div></div>;
 }
 
-function AuthScreen() {
+function AuthScreen({ onAuth }) {
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', phone: '', email: '', password: '' });
   const [busy, setBusy] = useState(false);
@@ -50,13 +51,13 @@ function AuthScreen() {
     e.preventDefault(); setError(''); setNotice(''); setBusy(true);
     try {
       if (mode === 'register') {
-        if (form.password.length < 10) throw new Error('Usa una contraseña de al menos 10 caracteres.');
-        const { data, error: err } = await supabase.auth.signUp({ email: form.email.trim(), password: form.password, options: { data: { full_name: form.name.trim(), phone: form.phone.trim() } } });
-        if (err) throw err;
-        if (!data.session) setNotice('Cuenta creada. Revisa tu correo para confirmar la dirección antes de iniciar sesión.');
+        if (form.password.length < 5) throw new Error('Usa una contraseña de al menos 5 caracteres.');
+        const d = await rpc('app_register', { p_name: form.name.trim(), p_email: form.email.trim(), p_phone: form.phone.trim(), p_password: form.password }, { auth: false });
+        setToken(d.token); onAuth(d.profile);
       } else {
-        const { error: err } = await supabase.auth.signInWithPassword({ email: form.email.trim(), password: form.password });
-        if (err) throw err;
+        const d = await rpc('app_login', { p_email: form.email.trim(), p_password: form.password }, { auth: false });
+        if (d?.error) throw new Error(d.error);
+        setToken(d.token); onAuth(d.profile);
       }
     } catch (err) { setError(err.message || 'No fue posible completar la operación.'); }
     finally { setBusy(false); }
@@ -66,7 +67,7 @@ function AuthScreen() {
       <form onSubmit={submit} className="form-stack">
         {mode === 'register' && <><label>Nombre completo<input required autoComplete="name" value={form.name} onChange={change('name')} placeholder="Tu nombre y apellido"/></label><label>Teléfono<input required autoComplete="tel" value={form.phone} onChange={change('phone')} placeholder="300 000 0000"/></label></>}
         <label>Correo electrónico<input required type="email" autoComplete="email" value={form.email} onChange={change('email')} placeholder="nombre@correo.com"/></label>
-        <label>Contraseña<input required type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={form.password} onChange={change('password')} placeholder="Mínimo 10 caracteres" minLength={10}/></label>
+        <label>Contraseña<input required type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={form.password} onChange={change('password')} placeholder="Mínimo 5 caracteres" minLength={5}/></label>
         {error && <div className="alert error">{error}</div>}{notice && <div className="alert success">{notice}</div>}
         <button className="btn btn-primary btn-full" disabled={busy}>{busy ? 'Procesando…' : mode === 'login' ? 'Ingresar' : 'Crear cuenta'} <ArrowRight size={17}/></button>
       </form><div className="auth-switch">{mode === 'login' ? '¿Todavía no tienes cuenta?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); }}> {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}</button></div><div className="install-row"><InstallButton/></div><div className="auth-legal"><ShieldCheck size={15}/> Tus datos se protegen con autenticación y permisos en la base de datos.</div></div><div className="auth-bottom">© {new Date().getFullYear()} Taxi Cerca <span>·</span> Movilidad con confianza</div></div></div>;
@@ -90,25 +91,17 @@ function UserDashboard({ profile }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const fetchRides = useCallback(async () => {
-    const { data } = await supabase.from('rides').select('id,pickup_label,destination_label,status,created_at,driver_id').eq('passenger_id', profile.id).order('created_at', { ascending: false }).limit(10);
-    if (data) {
-      setHistory(data);
-      const active = data.find((r) => ['pending','accepted','in_progress'].includes(r.status)) || null;
-      if (active?.driver_id) {
-        const { data: driverRows } = await supabase.rpc('get_ride_driver', { p_ride_id: active.id });
-        setRide({ ...active, driver_info: driverRows?.[0] || null });
-      } else setRide(active);
-    }
-  }, [profile.id]);
-  useEffect(() => { fetchRides(); const ch = supabase.channel(`passenger-${profile.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'rides', filter: `passenger_id=eq.${profile.id}` }, fetchRides).subscribe(); return () => supabase.removeChannel(ch); }, [profile.id, fetchRides]);
+    try { const d = await rpc('my_rides'); setHistory(d.history || []); setRide(d.active || null); } catch { /* se reintenta en el siguiente ciclo */ }
+  }, []);
+  useEffect(() => { fetchRides(); const t = setInterval(fetchRides, 6000); return () => clearInterval(t); }, [fetchRides]);
   function locate() { setError(''); if (!navigator.geolocation) return setError('Tu navegador no permite obtener la ubicación.'); navigator.geolocation.getCurrentPosition((p) => setCoords({ lat: p.coords.latitude, lng: p.coords.longitude }), () => setError('Activa el permiso de ubicación para solicitar un taxi.'), { enableHighAccuracy: true, timeout: 12000 }); }
   async function requestRide(e) {
     e.preventDefault(); setError(''); if (!coords) return setError('Primero comparte tu ubicación actual.'); if (ride) return setError('Ya tienes un viaje activo.'); setLoading(true);
-    const { data, error: err } = await supabase.from('rides').insert({ passenger_id: profile.id, pickup_label: pickup.trim() || 'Ubicación actual', pickup_lat: coords.lat, pickup_lng: coords.lng, destination_label: destination.trim() || null, status: 'pending' }).select().single();
-    if (err) setError(err.message); else { setRide(data); setHistory((h) => [data, ...h]); }
+    try { await rpc('ride_create', { p_label: pickup.trim() || 'Ubicación actual', p_lat: coords.lat, p_lng: coords.lng, p_destination: destination.trim() || null }); await fetchRides(); }
+    catch (err) { setError(err.message); }
     setLoading(false);
   }
-  async function cancelRide() { if (!ride) return; const { error: err } = await supabase.rpc('cancel_my_ride', { p_ride_id: ride.id }); if (err) setError(err.message); else fetchRides(); }
+  async function cancelRide() { if (!ride) return; try { await rpc('cancel_my_ride', { p_ride_id: ride.id }); fetchRides(); } catch (err) { setError(err.message); } }
   const past = history.filter((r) => !['pending','accepted','in_progress'].includes(r.status));
   return <><SectionTitle kicker="PANEL DEL PASAJERO" title={`Hola, ${(profile.full_name || '').split(' ')[0] || 'bienvenido'} 👋`} subtitle="Pide tu taxi en pocos pasos y sigue el estado de tu servicio."/><div className="user-grid"><div className="request-card"><div className="request-heading"><div><span className="eyebrow">NUEVO SERVICIO</span><h2>¿A dónde vamos hoy?</h2><p>Comparte tu ubicación y conecta con el taxi más cercano.</p></div><span className="request-icon"><CarFront size={24}/></span></div><form onSubmit={requestRide} className="ride-form"><label className="location-field"><span className="location-pin green-pin"><MapPin size={18}/></span><span className="field-content"><small>RECOGIDA</small><input value={pickup} onChange={(e) => setPickup(e.target.value)} placeholder="Punto de recogida"/></span><button type="button" className="locate-btn" onClick={locate} title="Usar ubicación actual"><Navigation size={17}/></button></label><div className="location-connector"/><label className="location-field"><span className="location-pin red-pin"><MapPin size={18}/></span><span className="field-content"><small>DESTINO (OPCIONAL)</small><input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="¿A dónde te llevamos?"/></span></label><div className="location-hint">{coords ? <><CheckCircle2 size={14}/> Ubicación detectada</> : <><MapPin size={14}/> Pulsa el botón de ubicación para continuar</>}</div>{error && <div className="alert error">{error}</div>}<button className="btn btn-dark btn-full request-submit" disabled={loading || !!ride}>{loading ? 'Solicitando…' : ride ? 'Ya tienes un viaje activo' : 'Solicitar taxi'} <ArrowRight size={17}/></button></form></div><div className="side-stack"><div className="safety-card"><span className="safety-icon"><ShieldCheck size={22}/></span><h3>Viaja con tranquilidad</h3><p>Los conductores son registrados por la administración y sus documentos quedan asociados a su perfil.</p><div className="safety-foot"><BadgeCheck size={15}/> Conductores verificados por administración</div></div><div className="tip-card"><Sparkles size={18}/><div><b>Un viaje más simple</b><p>Tu solicitud se muestra primero al conductor disponible más cercano.</p></div></div></div></div>
     {ride && <section className="content-card active-trip"><div className="card-heading"><div><span className="eyebrow">VIAJE ACTUAL</span><h2>Tu taxi está en proceso</h2></div><span className={`status-chip status-${ride.status}`}>{statusLabel[ride.status]}</span></div><div className="trip-route"><span className="route-icon"><MapPin size={17}/></span><div><small>RECOGIDA</small><b>{ride.pickup_label}</b></div><span className="route-arrow"><ArrowRight size={17}/></span><div><small>DESTINO</small><b>{ride.destination_label || 'Por definir'}</b></div></div>{ride.driver_info && <div className="assigned-driver"><span className="assigned-avatar"><CarFront size={18}/></span><div><b>{ride.driver_info.driver_name}</b><small>{[ride.driver_info.vehicle_make, ride.driver_info.vehicle_model, ride.driver_info.vehicle_color].filter(Boolean).join(' · ')} {ride.driver_info.plate ? `· ${ride.driver_info.plate}` : ''}</small></div>{ride.driver_info.driver_phone && <a href={`tel:${ride.driver_info.driver_phone}`}><Phone size={15}/> Llamar</a>}</div>}<div className="trip-bottom"><span>Solicitud #{ride.id.slice(0,8).toUpperCase()}</span>{ride.status === 'pending' && <button className="btn btn-outline btn-small" onClick={cancelRide}>Cancelar solicitud</button>}</div></section>}
@@ -124,25 +117,23 @@ function DriverDashboard({ profile }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const refresh = useCallback(async () => {
-    const [{ data: current }, { data: documents }, { data: pending }, { data: lastLocation }] = await Promise.all([
-      supabase.from('rides').select('*').eq('driver_id', profile.id).in('status', ['accepted','in_progress']).order('created_at', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('driver_documents').select('*').eq('driver_id', profile.id).order('created_at', { ascending: false }),
-      supabase.rpc('available_ride_requests'),
-      supabase.from('driver_locations').select('lat,lng,is_online,updated_at').eq('driver_id', profile.id).maybeSingle()
-    ]);
-    setActiveRide(current || null); setDocs(documents || []); setOffers(pending || []);
-    const fresh = lastLocation?.is_online && lastLocation?.updated_at && (Date.now() - new Date(lastLocation.updated_at).getTime() < 45000);
-    setOnline(Boolean(fresh));
-    if (fresh && lastLocation.lat != null && lastLocation.lng != null) setLocation({ lat: lastLocation.lat, lng: lastLocation.lng });
-  }, [profile.id]);
-  async function updatePosition(coords, isOnline = online) { const point = { driver_id: profile.id, lat: coords.latitude, lng: coords.longitude, is_online: isOnline, updated_at: new Date().toISOString() }; const { error: err } = await supabase.from('driver_locations').upsert(point, { onConflict: 'driver_id' }); if (err) setError(err.message); else setLocation({ lat: coords.latitude, lng: coords.longitude }); }
-  useEffect(() => { refresh(); const channel = supabase.channel(`driver-feed-${profile.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'rides' }, refresh).subscribe(); const timer = setInterval(refresh, 12000); return () => { clearInterval(timer); supabase.removeChannel(channel); }; }, [profile.id, refresh]);
+    try {
+      const [st, pending] = await Promise.all([rpc('driver_state'), rpc('available_ride_requests')]);
+      setActiveRide(st.active_ride || null); setDocs(st.documents || []); setOffers(pending || []);
+      const l = st.location;
+      const fresh = Boolean(l?.is_online && l?.updated_at && (Date.now() - new Date(l.updated_at).getTime() < 45000));
+      setOnline(fresh);
+      if (fresh && l.lat != null && l.lng != null) setLocation({ lat: l.lat, lng: l.lng });
+    } catch { /* se reintenta en el siguiente ciclo */ }
+  }, []);
+  async function updatePosition(coords, isOnline = online) { try { await rpc('driver_set_location', { p_lat: coords.latitude, p_lng: coords.longitude, p_online: isOnline }); setLocation({ lat: coords.latitude, lng: coords.longitude }); } catch (err) { setError(err.message); } }
+  useEffect(() => { refresh(); const timer = setInterval(refresh, 6000); return () => clearInterval(timer); }, [refresh]);
   useEffect(() => { if (!online) return; if (!navigator.geolocation) { setError('Este dispositivo no permite ubicación.'); setOnline(false); return; } const watcher = navigator.geolocation.watchPosition((p) => updatePosition(p.coords, true), () => setError('No se pudo actualizar la ubicación. Revisa los permisos.'), { enableHighAccuracy: true, maximumAge: 10000 });
     const heartbeat = setInterval(() => navigator.geolocation.getCurrentPosition((p) => updatePosition(p.coords, true), () => {}, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 }), 15000);
     return () => { navigator.geolocation.clearWatch(watcher); clearInterval(heartbeat); }; }, [online]);
-  async function toggleOnline() { setError(''); if (online) { await supabase.from('driver_locations').upsert({ driver_id: profile.id, is_online: false, updated_at: new Date().toISOString() }, { onConflict: 'driver_id' }); setOnline(false); return; } if (!navigator.geolocation) return setError('Activa la ubicación en este dispositivo.'); navigator.geolocation.getCurrentPosition(async (p) => { await updatePosition(p.coords, true); setOnline(true); }, () => setError('Debes permitir el acceso a la ubicación para conectarte.'), { enableHighAccuracy: true, timeout: 12000 }); }
-  async function accept(rideId) { setBusy(rideId); setError(''); const { error: err } = await supabase.rpc('accept_ride', { p_ride_id: rideId }); if (err) setError(err.message); else await refresh(); setBusy(''); }
-  async function setRideStatus(next) { if (!activeRide) return; setBusy('status'); const { error: err } = await supabase.rpc('update_driver_ride_status', { p_ride_id: activeRide.id, p_status: next }); if (err) setError(err.message); else await refresh(); setBusy(''); }
+  async function toggleOnline() { setError(''); if (online) { try { await rpc('driver_set_location', { p_lat: null, p_lng: null, p_online: false }); } catch (err) { setError(err.message); } setOnline(false); return; } if (!navigator.geolocation) return setError('Activa la ubicación en este dispositivo.'); navigator.geolocation.getCurrentPosition(async (p) => { await updatePosition(p.coords, true); setOnline(true); }, () => setError('Debes permitir el acceso a la ubicación para conectarte.'), { enableHighAccuracy: true, timeout: 12000 }); }
+  async function accept(rideId) { setBusy(rideId); setError(''); try { await rpc('accept_ride', { p_ride_id: rideId }); await refresh(); } catch (err) { setError(err.message); } setBusy(''); }
+  async function setRideStatus(next) { if (!activeRide) return; setBusy('status'); try { await rpc('update_driver_ride_status', { p_ride_id: activeRide.id, p_status: next }); await refresh(); } catch (err) { setError(err.message); } setBusy(''); }
   return <><SectionTitle kicker="PANEL DEL CONDUCTOR" title={`¡Hola, ${(profile.full_name || '').split(' ')[0] || 'conductor'}!`} subtitle="Conéctate para recibir solicitudes cercanas y gestionar tus servicios." action={<button className={`online-toggle ${online ? 'is-online' : ''}`} onClick={toggleOnline}><Power size={16}/>{online ? 'Estás conectado' : 'Conectarme'}</button>}/>{error && <div className="alert error page-alert">{error}</div>}<div className="driver-stats"><div className="metric-card"><span className="metric-icon yellow"><Navigation size={19}/></span><div><small>ESTADO</small><b>{online ? 'Disponible' : 'Desconectado'}</b></div><i className={online ? 'metric-live' : ''}/></div><div className="metric-card"><span className="metric-icon blue"><MapPin size={19}/></span><div><small>UBICACIÓN</small><b>{location ? 'Actualizada' : 'Sin ubicación'}</b></div></div><div className="metric-card"><span className="metric-icon purple"><CarFront size={19}/></span><div><small>SERVICIO ACTUAL</small><b>{activeRide ? 'En curso' : 'Ninguno'}</b></div></div></div>
     {activeRide && <section className="content-card active-trip"><div className="card-heading"><div><span className="eyebrow">SERVICIO ASIGNADO</span><h2>Viaje en curso</h2></div><span className={`status-chip status-${activeRide.status}`}>{statusLabel[activeRide.status]}</span></div><div className="trip-route"><span className="route-icon"><MapPin size={17}/></span><div><small>RECOGIDA</small><b>{activeRide.pickup_label}</b></div><span className="route-arrow"><ArrowRight size={17}/></span><div><small>DESTINO</small><b>{activeRide.destination_label || 'Por definir'}</b></div></div><div className="action-row">{activeRide.status === 'accepted' ? <button className="btn btn-primary" onClick={() => setRideStatus('in_progress')} disabled={busy === 'status'}>Iniciar viaje <ArrowRight size={16}/></button> : <button className="btn btn-primary" onClick={() => setRideStatus('completed')} disabled={busy === 'status'}>Finalizar servicio <Check size={16}/></button>}</div></section>}
     <section className="content-card offers-card"><div className="card-heading"><div><span className="eyebrow">SOLICITUDES CERCANAS</span><h2>Viajes disponibles</h2><p>Solo aparecen solicitudes donde eres el conductor disponible más cercano.</p></div><span className="count-badge">{offers.length} nuevas</span></div>{!online ? <EmptyState icon={Power} title="Conéctate para recibir viajes" text="Activa tu disponibilidad y permite el acceso a tu ubicación."/> : offers.length ? <div className="offer-list">{offers.map((r) => <div className="offer-row" key={r.id}><div className="offer-main"><span className="offer-icon"><CarFront size={20}/></span><div><b>{r.passenger_name || 'Pasajero'}</b><small><MapPin size={13}/> {r.pickup_label}</small><small><Navigation size={13}/> {r.destination_label || 'Destino por definir'}</small>{r.passenger_phone && <small><Phone size={12}/> {r.passenger_phone}</small>}</div></div><div className="offer-distance">{Number(r.distance_km).toFixed(1)} km</div><button className="btn btn-primary btn-small" onClick={() => accept(r.id)} disabled={!!busy || !!activeRide}>{busy === r.id ? 'Aceptando…' : 'Aceptar'}</button></div>)}</div> : <EmptyState title="No hay solicitudes cerca" text="Te avisaremos cuando haya un pasajero en tu zona."/>}</section>
@@ -159,51 +150,37 @@ function AdminDashboard({ profile }) {
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', password: '', vehicle_make: '', vehicle_model: '', vehicle_color: '', plate: '', documents: [{ title: 'Documento de identidad', url: '' }, { title: 'Licencia de conducción', url: '' }, { title: 'Documentos del vehículo', url: '' }] });
   const load = useCallback(async () => {
-    const [{ data: list }, { count: users }, { count: rides }] = await Promise.all([
-      supabase.from('profiles').select('id,full_name,email,phone,role,created_at,driver_details(vehicle_make,vehicle_model,vehicle_color,plate),driver_documents(id,title,drive_url)').eq('role', 'driver').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'user'),
-      supabase.from('rides').select('*', { count: 'exact', head: true })
-    ]); setDrivers(list || []); setUsersCount(users || 0); setRidesCount(rides || 0);
+    try { const d = await rpc('admin_dashboard'); setDrivers(d.drivers || []); setUsersCount(d.users_count || 0); setRidesCount(d.rides_count || 0); } catch { /* se reintenta */ }
   }, []);
-  useEffect(() => { load(); const c = supabase.channel('admin-refresh').on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, load).on('postgres_changes', { event: '*', schema: 'public', table: 'driver_documents' }, load).subscribe(); return () => supabase.removeChannel(c); }, [load]);
+  useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [load]);
   const setDoc = (index, key, value) => setForm((f) => ({ ...f, documents: f.documents.map((d, i) => i === index ? { ...d, [key]: value } : d) }));
   async function createDriver(e) {
     e.preventDefault(); setBusy(true); setError(''); setSuccess('');
     try {
       const docs = form.documents.filter((d) => d.url.trim()).map((d) => ({ title: d.title.trim(), drive_url: d.url.trim() }));
-      const { data, error: err } = await supabase.functions.invoke('create-driver', { body: { ...form, documents: docs } });
-      if (err) throw err; if (data?.error) throw new Error(data.error);
+      await rpc('admin_create_driver', { p_name: form.full_name, p_email: form.email, p_phone: form.phone, p_password: form.password, p_make: form.vehicle_make, p_model: form.vehicle_model, p_color: form.vehicle_color, p_plate: form.plate, p_docs: docs });
       setSuccess(`Conductor ${form.full_name} creado correctamente.`); setForm({ full_name: '', email: '', phone: '', password: '', vehicle_make: '', vehicle_model: '', vehicle_color: '', plate: '', documents: [{ title: 'Documento de identidad', url: '' }, { title: 'Licencia de conducción', url: '' }, { title: 'Documentos del vehículo', url: '' }] }); setShowForm(false); await load();
     } catch (err) { setError(err.message || 'No fue posible crear el conductor.'); }
     finally { setBusy(false); }
   }
   return <><SectionTitle kicker="CENTRO DE CONTROL" title="Administración" subtitle="Gestiona los conductores, sus documentos y la operación de Taxi Cerca." action={<button className="btn btn-primary" onClick={() => { setShowForm(!showForm); setError(''); setSuccess(''); }}><Plus size={17}/> Crear conductor</button>}/>{error && <div className="alert error page-alert">{error}</div>}{success && <div className="alert success page-alert">{success}</div>}<div className="admin-stats"><div className="admin-stat"><span className="stat-symbol stat-yellow"><Users size={20}/></span><div><small>PASAJEROS REGISTRADOS</small><strong>{usersCount}</strong><span>Usuarios en la plataforma</span></div></div><div className="admin-stat"><span className="stat-symbol stat-blue"><CarFront size={20}/></span><div><small>CONDUCTORES</small><strong>{drivers.length}</strong><span>Perfiles creados</span></div></div><div className="admin-stat"><span className="stat-symbol stat-purple"><Navigation size={20}/></span><div><small>SERVICIOS REGISTRADOS</small><strong>{ridesCount}</strong><span>Solicitudes de viaje</span></div></div></div>
-    {showForm && <section className="content-card create-driver-card"><div className="card-heading"><div><span className="eyebrow">NUEVO PERFIL</span><h2>Registrar conductor</h2><p>La cuenta se crea con acceso de conductor y los documentos quedan asociados a su perfil.</p></div><button className="icon-button" onClick={() => setShowForm(false)}><X size={19}/></button></div><form onSubmit={createDriver} className="admin-form"><div className="form-section-label"><UserRound size={16}/> Datos personales y acceso</div><div className="field-grid"><label>Nombre completo<input required value={form.full_name} onChange={(e) => setForm({...form, full_name:e.target.value})} placeholder="Nombre del conductor"/></label><label>Teléfono<input required value={form.phone} onChange={(e) => setForm({...form, phone:e.target.value})} placeholder="300 000 0000"/></label><label>Correo de acceso<input required type="email" value={form.email} onChange={(e) => setForm({...form, email:e.target.value})} placeholder="conductor@correo.com"/></label><label>Contraseña temporal<input required type="password" minLength={10} value={form.password} onChange={(e) => setForm({...form, password:e.target.value})} placeholder="Mínimo 10 caracteres"/></label></div><div className="form-section-label"><CarFront size={16}/> Información del taxi</div><div className="field-grid three-fields"><label>Marca<input value={form.vehicle_make} onChange={(e) => setForm({...form, vehicle_make:e.target.value})} placeholder="Chevrolet"/></label><label>Modelo<input value={form.vehicle_model} onChange={(e) => setForm({...form, vehicle_model:e.target.value})} placeholder="Beat"/></label><label>Color<input value={form.vehicle_color} onChange={(e) => setForm({...form, vehicle_color:e.target.value})} placeholder="Amarillo"/></label><label>Placa<input value={form.plate} onChange={(e) => setForm({...form, plate:e.target.value.toUpperCase()})} placeholder="ABC123"/></label></div><div className="form-section-label"><FileText size={16}/> Documentos en Google Drive</div><p className="form-help">Pega enlaces compartidos que permitan la lectura al personal autorizado. No subas documentos directamente al código.</p><div className="documents-form">{form.documents.map((d, i) => <label key={i}>{d.title}<input type="url" value={d.url} onChange={(e) => setDoc(i, 'url', e.target.value)} placeholder="https://drive.google.com/file/d/…"/></label>)}</div><div className="form-actions"><button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>Cancelar</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Creando perfil…' : 'Crear conductor'} <ArrowRight size={16}/></button></div></form></section>}
+    {showForm && <section className="content-card create-driver-card"><div className="card-heading"><div><span className="eyebrow">NUEVO PERFIL</span><h2>Registrar conductor</h2><p>La cuenta se crea con acceso de conductor y los documentos quedan asociados a su perfil.</p></div><button className="icon-button" onClick={() => setShowForm(false)}><X size={19}/></button></div><form onSubmit={createDriver} className="admin-form"><div className="form-section-label"><UserRound size={16}/> Datos personales y acceso</div><div className="field-grid"><label>Nombre completo<input required value={form.full_name} onChange={(e) => setForm({...form, full_name:e.target.value})} placeholder="Nombre del conductor"/></label><label>Teléfono<input required value={form.phone} onChange={(e) => setForm({...form, phone:e.target.value})} placeholder="300 000 0000"/></label><label>Correo de acceso<input required type="email" value={form.email} onChange={(e) => setForm({...form, email:e.target.value})} placeholder="conductor@correo.com"/></label><label>Contraseña temporal<input required type="password" minLength={5} value={form.password} onChange={(e) => setForm({...form, password:e.target.value})} placeholder="Mínimo 5 caracteres"/></label></div><div className="form-section-label"><CarFront size={16}/> Información del taxi</div><div className="field-grid three-fields"><label>Marca<input value={form.vehicle_make} onChange={(e) => setForm({...form, vehicle_make:e.target.value})} placeholder="Chevrolet"/></label><label>Modelo<input value={form.vehicle_model} onChange={(e) => setForm({...form, vehicle_model:e.target.value})} placeholder="Beat"/></label><label>Color<input value={form.vehicle_color} onChange={(e) => setForm({...form, vehicle_color:e.target.value})} placeholder="Amarillo"/></label><label>Placa<input value={form.plate} onChange={(e) => setForm({...form, plate:e.target.value.toUpperCase()})} placeholder="ABC123"/></label></div><div className="form-section-label"><FileText size={16}/> Documentos en Google Drive</div><p className="form-help">Pega enlaces compartidos que permitan la lectura al personal autorizado. No subas documentos directamente al código.</p><div className="documents-form">{form.documents.map((d, i) => <label key={i}>{d.title}<input type="url" value={d.url} onChange={(e) => setDoc(i, 'url', e.target.value)} placeholder="https://drive.google.com/file/d/…"/></label>)}</div><div className="form-actions"><button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>Cancelar</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Creando perfil…' : 'Crear conductor'} <ArrowRight size={16}/></button></div></form></section>}
     <section className="content-card driver-management"><div className="card-heading"><div><span className="eyebrow">TU EQUIPO</span><h2>Conductores registrados</h2></div><span className="count-badge">{drivers.length} perfiles</span></div>{drivers.length ? <div className="driver-table-wrap"><table className="driver-table"><thead><tr><th>CONDUCTOR</th><th>VEHÍCULO</th><th>PLACA</th><th>DOCUMENTOS</th><th>REGISTRO</th></tr></thead><tbody>{drivers.map((d) => <tr key={d.id}><td><div className="table-person"><span className="avatar">{(d.full_name || 'C').slice(0,1).toUpperCase()}</span><span><b>{d.full_name}</b><small>{d.email || d.phone || 'Sin contacto'}</small></span></div></td><td>{[d.driver_details?.vehicle_make, d.driver_details?.vehicle_model].filter(Boolean).join(' ') || 'Sin datos'}<small className="table-sub">{d.driver_details?.vehicle_color || ''}</small></td><td><span className="plate-chip">{d.driver_details?.plate || '—'}</span></td><td><div className="doc-links">{(d.driver_documents || []).length ? d.driver_documents.map((doc) => <a href={doc.drive_url} target="_blank" rel="noreferrer" key={doc.id} title={doc.title}><FileText size={15}/></a>) : <span className="muted">Sin documentos</span>}</div></td><td>{new Date(d.created_at).toLocaleDateString('es-CO')}</td></tr>)}</tbody></table></div> : <EmptyState icon={Users} title="Aún no has creado conductores" text="Usa el botón Crear conductor para registrar el primer perfil."/>}</section></>;
 }
 
 export default function App() {
-  const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [profileError, setProfileError] = useState('');
-  const loadProfile = useCallback(async (user) => {
-    if (!user) { setProfile(null); return; }
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
-    if (error) { setProfileError(error.message); setProfile(null); }
-    else { setProfile(data); setProfileError(''); }
-  }, []);
+  const clearSession = useCallback(() => { setToken(null); setProfile(null); }, []);
   useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
-    supabase.auth.getSession().then(async ({ data }) => { setSession(data.session); await loadProfile(data.session?.user); setLoading(false); });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { setSession(next); setTimeout(() => loadProfile(next?.user), 0); });
-    return () => listener.subscription.unsubscribe();
-  }, [loadProfile]);
-  async function signOut() { await supabase.auth.signOut(); setSession(null); setProfile(null); }
+    if (!isSupabaseConfigured || !getToken()) { setLoading(false); return; }
+    rpc('app_me').then(setProfile).catch(() => setToken(null)).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { window.addEventListener('session-expired', clearSession); return () => window.removeEventListener('session-expired', clearSession); }, [clearSession]);
+  async function signOut() { try { await rpc('app_logout'); } catch { /* ya expiró */ } clearSession(); }
   if (!isSupabaseConfigured) return <ConfigNotice/>;
-  if (loading || (session && !profile && !profileError)) return <div className="loading-screen"><div className="loader-mark"><CarFront size={26}/></div><span>Preparando tu experiencia…</span></div>;
-  if (!session) return <AuthScreen/>;
-  if (profileError || !profile) return <div className="loading-screen"><div className="error-state"><ShieldAlert size={30}/><h2>No se pudo cargar tu perfil</h2><p>{profileError || 'El usuario inició sesión, pero no tiene un perfil asociado. Contacta a administración.'}</p><button className="btn btn-outline" onClick={signOut}>Cerrar sesión</button></div></div>;
+  if (loading) return <div className="loading-screen"><div className="loader-mark"><CarFront size={26}/></div><span>Preparando tu experiencia…</span></div>;
+  if (!profile) return <AuthScreen onAuth={setProfile}/>;
   const role = profile.role;
   return <Shell profile={profile} role={role} onSignOut={signOut} active={role === 'admin' ? 'Panel' : role === 'driver' ? 'Panel' : 'Inicio'}>{role === 'admin' ? <AdminDashboard profile={profile}/> : role === 'driver' ? <DriverDashboard profile={profile}/> : <UserDashboard profile={profile}/>}</Shell>;
 }
