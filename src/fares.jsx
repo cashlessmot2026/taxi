@@ -11,6 +11,13 @@ const fadeUp = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transi
 export const platformFare = (ride, km = ride?.distance_km_traveled || 0) =>
   Math.max(Number(ride?.min_fare) || 0, Math.round((Number(km) || 0) * (Number(ride?.price_per_km) || 0)));
 
+// Valor a pagar: con tarifa de la plataforma = por km; si no, el valor acordado por el conductor (o por km si no hubo cotización).
+export const amountDue = (ride) => {
+  if (ride?.final_fare != null) return Number(ride.final_fare);
+  if (ride?.use_platform_rate) return platformFare(ride);
+  return ride?.quote_total != null ? Number(ride.quote_total) : platformFare(ride);
+};
+
 export function useFares() {
   const [fares, setFares] = useState({ sectors: [], price_per_km: 0 });
   const load = useCallback(async () => { try { setFares(await rpc('fares_public')); } catch { /* sin datos de tarifas todavía */ } }, []);
@@ -75,7 +82,8 @@ export function TripMeter({ ride, offset = 0 }) {
   return <div className="trip-meter">
     <div className="meter-cell"><Clock3 size={18}/><div><small>TIEMPO</small><b className="meter-num">{fmtDuration(secs)}</b></div></div>
     <div className="meter-cell"><Navigation size={18}/><div><small>RECORRIDO</small><b className="meter-num">{km.toFixed(2)} km</b></div></div>
-    <div className="meter-cell"><Gauge size={18}/><div><small>{ride.use_platform_rate ? 'TARIFA PLATAFORMA' : 'VALOR APROX.'}</small><b className="meter-num">{ride.use_platform_rate ? cop(platformFare(ride)) : ride.quote_total != null ? cop(ride.quote_total) : '—'}</b></div></div>
+    <div className="meter-cell"><Gauge size={18}/><div><small>POR KILÓMETROS</small><b className="meter-num">{cop(platformFare(ride))}</b></div></div>
+    <div className="meter-cell meter-due"><Wallet size={18}/><div><small>VALOR A PAGAR</small><b className="meter-num">{cop(amountDue(ride))}</b></div></div>
   </div>;
 }
 
@@ -85,8 +93,11 @@ function FareLines({ ride }) {
     {ride.min_fare != null && <div className="quote-line"><span>Tarifa mínima</span><b>{cop(ride.min_fare)}</b></div>}
     {ride.quote_additional != null && <div className="quote-line"><span>Valor adicional del conductor</span><b>{cop(ride.quote_additional)}</b></div>}
     {ride.quote_total != null && <div className="quote-total"><span>Valor aproximado</span><b>{cop(ride.quote_total)}</b></div>}
-    {ride.use_platform_rate && <div className="quote-line platform-on"><span>Cobro con tarifa de la plataforma ({cop(ride.price_per_km || 0)}/km)</span><b>{ride.status === 'in_progress' ? cop(platformFare(ride)) : 'Se calcula al iniciar'}</b></div>}
+    {ride.status === 'in_progress' && <div className="quote-line"><span>Por kilómetros ({(Number(ride.distance_km_traveled) || 0).toFixed(2)} km × {cop(ride.price_per_km || 0)})</span><b>{cop(platformFare(ride))}</b></div>}
+    {ride.use_platform_rate && <div className="quote-line platform-on"><span>El conductor cobra con la tarifa de la plataforma</span><b>Activa</b></div>}
+    {ride.status === 'in_progress' && <div className="quote-total"><span>Valor a pagar{ride.use_platform_rate ? ' (tarifa plataforma)' : ''}</span><b>{cop(amountDue(ride))}</b></div>}
     {ride.tip_amount > 0 && <div className="quote-line"><span>Propina</span><b>{cop(ride.tip_amount)}</b></div>}
+    {ride.tip_amount > 0 && ride.status === 'in_progress' && <div className="quote-line"><span>Total con propina</span><b>{cop(amountDue(ride) + Number(ride.tip_amount))}</b></div>}
   </div>;
 }
 

@@ -169,3 +169,5 @@ button.nav-item:not(.nav-active){background:transparent}
 .price-form input,.sector-add input,.cell-input{border:1px solid #e3e8f0;border-radius:11px;padding:11px 13px;font:700 14px Nunito,sans-serif;background:#fff;color:#111a2e;width:100%}
 .price-now{font-size:13px;color:#5b667a;padding-bottom:12px}
 .sector-add{margin:14px 0 18px}
+
+.meter-due{background:linear-gradient(135deg,#118a61,#19a778)}.meter-due svg{color:#fff}.meter-due small{color:#d6f5e7}
