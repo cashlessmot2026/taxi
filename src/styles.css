@@ -133,3 +133,39 @@ button.nav-item:not(.nav-active){background:transparent}
 .btn-disable{background:#fff;color:#c0392b;border:1px solid #f1c9c5}.btn-disable:hover{background:#fdeceb}
 .btn-enable{background:#e3f6ee;color:#118a61;border:1px solid #bfe8d6}.btn-enable:hover{background:#d2f0e3}
 .row-disabled td{opacity:.62}.row-disabled td:last-child{opacity:1}
+
+/* ===== Tarifas, propina y contador ===== */
+.fares-card .fare-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:6px}
+.fare-chip{display:flex;align-items:center;gap:11px;background:#f7f9fc;border:1px solid #e6ebf3;border-radius:14px;padding:12px 14px}
+.fare-chip>span{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#fff3cc;color:#8a6500}
+.fare-chip div{flex:1;min-width:0}.fare-chip b{display:block;font-size:13px}.fare-chip small{font-size:10px;color:#8993a5;font-weight:700}
+.fare-chip strong{font-size:14px;color:#111a2e}
+.fare-km{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:#5b667a}.fare-km b{color:#111a2e}
+.select-field{width:100%;margin-top:6px;border:1px solid #e3e8f0;border-radius:12px;padding:13px 14px;font:700 13px Nunito,sans-serif;color:#25344c;background:#fff}
+.tip-toggle{margin-top:12px}.tip-open{background:#fff9e6!important;border-color:#e6b422!important}
+.tip-picker{margin-top:10px}.tip-chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tip-custom{display:inline-flex;align-items:center;gap:8px;border:1px solid #e3e8f0;border-radius:999px;padding:4px 6px 4px 14px;font:800 12px Nunito,sans-serif;color:#5b667a;background:#fff}
+.tip-custom input{border:0;outline:0;width:84px;font:800 12px Nunito,sans-serif;background:#f3f5f9;border-radius:999px;padding:7px 10px}
+.tip-custom.is-on{border-color:#e6b422;background:#fff9e6}
+.tip-note{display:flex;align-items:center;gap:6px;margin-top:8px;color:#7b8495;font-size:12px}
+.quote-box,.fare-lines{display:grid;gap:8px;background:#f7f9fc;border:1px solid #e6ebf3;border-radius:14px;padding:13px 14px;margin-top:12px}
+.quote-line{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#5b667a}.quote-line b{color:#111a2e;text-align:right}
+.quote-total{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border-radius:11px;background:#111a2e;color:#fff;font-size:12px;font-weight:700}.quote-total b{font-size:17px;color:#ffcb43}
+.quote-input{display:grid;gap:5px;font-size:12px;font-weight:800;color:#5b667a}
+.quote-input input{border:1px solid #e3e8f0;border-radius:10px;padding:10px 12px;font:800 14px Nunito,sans-serif;background:#fff;color:#111a2e}
+.platform-on b{color:#118a61}
+.trip-fares{margin-top:14px;display:grid;gap:10px}
+.trip-meter{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.meter-cell{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;background:linear-gradient(135deg,#111a2e,#243450);color:#fff}
+.meter-cell svg{color:#ffcb43;flex:none}.meter-cell small{display:block;font-size:9px;letter-spacing:1.2px;color:#aab5c6;font-weight:800}
+.meter-num{font-size:20px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:0!important}
+.tip-edit{display:grid;gap:6px}
+.platform-toggle{background:#fff;border:2px solid #e3e8f0;color:#33405a;justify-content:center;padding:12px 14px}
+.platform-toggle.is-on{background:#e3f6ee;border-color:#19a778;color:#0e7a55}
+.platform-help{color:#8993a5;font-size:11px;line-height:1.4}
+.history-fare{font-size:12px;font-weight:800;color:#111a2e;background:#fff3cc;border-radius:999px;padding:5px 10px;white-space:nowrap}
+.price-form,.sector-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin-top:6px}
+.price-form label,.sector-add label{display:grid;gap:5px;font-size:12px;font-weight:800;color:#5b667a;min-width:200px;flex:1}
+.price-form input,.sector-add input,.cell-input{border:1px solid #e3e8f0;border-radius:11px;padding:11px 13px;font:700 14px Nunito,sans-serif;background:#fff;color:#111a2e;width:100%}
+.price-now{font-size:13px;color:#5b667a;padding-bottom:12px}
+.sector-add{margin:14px 0 18px}
