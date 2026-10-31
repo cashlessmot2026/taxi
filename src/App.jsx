@@ -36,11 +36,25 @@ function InstallButton({ className = '' }) {
     {help && <div className="install-help" role="dialog"><div className="install-card"><button className="icon-button install-close" onClick={() => setHelp(false)}><X size={18}/></button><img src={`${import.meta.env.BASE_URL}logo.png`} alt="" width="64" height="64"/><h3>Instala Taxis Teleclub</h3>{ios ? <p>En Safari pulsa el botón <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.</p> : <p>Abre el menú del navegador (⋮) y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>. Si no aparece, abre esta página en Chrome o Safari.</p>}</div></div>}</>;
 }
 
+const PORTALS = {
+  '#/conductor': { role: 'driver', eyebrow: 'PORTAL DEL CONDUCTOR', title: 'Acceso conductores', sub: 'Ingresa con el correo y la contraseña que te entregó la administración.' },
+  '#/admin': { role: 'admin', eyebrow: 'PORTAL DE ADMINISTRACIÓN', title: 'Acceso administración', sub: 'Solo para cuentas de administrador.' },
+  '#/pasajero': { role: 'user', eyebrow: 'PORTAL DEL PASAJERO', title: 'Acceso pasajeros', sub: 'Ingresa tus datos para pedir tu taxi.' }
+};
+const ROLE_NAME = { driver: 'conductor', admin: 'administrador', user: 'pasajero' };
+function usePortal() {
+  const read = () => PORTALS[window.location.hash.replace(/\/$/, '').toLowerCase()] || null;
+  const [portal, setPortal] = useState(read);
+  useEffect(() => { const f = () => setPortal(read()); window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f); }, []);
+  return portal;
+}
+
 function ConfigNotice() {
   return <div className="config-screen"><div className="config-card"><Brand/><span className="eyebrow">CONFIGURACIÓN INICIAL</span><h1>Conecta tu proyecto Supabase</h1><p>La aplicación ya está preparada. Para activar registros, acceso, conductores y viajes, agrega las credenciales públicas de tu proyecto en <code>.env.local</code>.</p><div className="code-panel"><div>VITE_SUPABASE_URL=https://tu-proyecto.supabase.co</div><div>VITE_SUPABASE_ANON_KEY=tu-clave-publica</div></div><p className="small-muted">No coloques aquí la clave <b>service_role</b> ni ninguna clave secreta. El panel de administración y la creación de conductores se protegen en el servidor.</p><a className="text-link" href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Abrir Supabase <ArrowRight size={15}/></a></div></div>;
 }
 
-function AuthScreen({ onAuth }) {
+function AuthScreen({ onAuth, portal }) {
+  const canRegister = !portal || portal.role === 'user';
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', phone: '', email: '', password: '' });
   const [busy, setBusy] = useState(false);
@@ -57,20 +71,26 @@ function AuthScreen({ onAuth }) {
       } else {
         const d = await rpc('app_login', { p_email: form.email.trim(), p_password: form.password }, { auth: false });
         if (d?.error) throw new Error(d.error);
-        setToken(d.token); onAuth(d.profile);
+        setToken(d.token);
+        if (portal && d.profile.role !== portal.role) {
+          try { await rpc('app_logout'); } catch { /* sin sesión */ }
+          setToken(null);
+          throw new Error(`Esta cuenta no es de ${ROLE_NAME[portal.role]}. Usa el acceso que corresponde a tu cuenta.`);
+        }
+        onAuth(d.profile);
       }
     } catch (err) { setError(err.message || 'No fue posible completar la operación.'); }
     finally { setBusy(false); }
   }
   return <div className="auth-layout"><div className="auth-visual"><div className="visual-orb orb-one"/><div className="visual-orb orb-two"/><div className="visual-content"><Brand/><span className="eyebrow light">TU CIUDAD, A UN VIAJE</span><h1>Muévete fácil.<br/><em>Llega tranquilo.</em></h1><p>Una forma sencilla y cercana de pedir tu taxi, conectar con conductores y viajar con confianza.</p><div className="visual-stats"><div><strong>01</strong><span>Solicita</span></div><i/><div><strong>02</strong><span>Conecta</span></div><i/><div><strong>03</strong><span>Viaja</span></div></div><div className="visual-car"><div className="road"/><div className="car-illustration"><CarFront size={96}/></div><span className="route-dot dot-a"/><span className="route-dot dot-b"/><span className="route-line"/></div></div><span className="visual-foot">TAXI CERCA · MOVILIDAD LOCAL</span></div>
-    <div className="auth-panel"><div className="auth-top"><span className="mobile-brand"><Brand compact/></span><span className="secure-note"><ShieldCheck size={15}/> Acceso seguro</span></div><div className="auth-form-wrap"><span className="eyebrow">{mode === 'login' ? 'QUÉ BUENO TENERTE DE VUELTA' : 'EMPIEZA A MOVERTE'}</span><h2>{mode === 'login' ? 'Bienvenido de nuevo' : 'Crea tu cuenta'}</h2><p className="form-sub">{mode === 'login' ? 'Ingresa tus datos para continuar.' : 'Regístrate para solicitar taxis de forma fácil.'}</p>
+    <div className="auth-panel"><div className="auth-top"><span className="mobile-brand"><Brand compact/></span><span className="secure-note"><ShieldCheck size={15}/> Acceso seguro</span></div><div className="auth-form-wrap"><span className="eyebrow">{portal ? portal.eyebrow : mode === 'login' ? 'QUÉ BUENO TENERTE DE VUELTA' : 'EMPIEZA A MOVERTE'}</span><h2>{mode === 'login' ? (portal ? portal.title : 'Bienvenido de nuevo') : 'Crea tu cuenta'}</h2><p className="form-sub">{mode === 'login' ? (portal ? portal.sub : 'Ingresa tus datos para continuar.') : 'Regístrate para solicitar taxis de forma fácil.'}</p>
       <form onSubmit={submit} className="form-stack">
         {mode === 'register' && <><label>Nombre completo<input required autoComplete="name" value={form.name} onChange={change('name')} placeholder="Tu nombre y apellido"/></label><label>Teléfono<input required autoComplete="tel" value={form.phone} onChange={change('phone')} placeholder="300 000 0000"/></label></>}
         <label>Correo electrónico<input required type="email" autoComplete="email" value={form.email} onChange={change('email')} placeholder="nombre@correo.com"/></label>
         <label>Contraseña<input required type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={form.password} onChange={change('password')} placeholder="Mínimo 5 caracteres" minLength={5}/></label>
         {error && <div className="alert error">{error}</div>}{notice && <div className="alert success">{notice}</div>}
         <button className="btn btn-primary btn-full" disabled={busy}>{busy ? 'Procesando…' : mode === 'login' ? 'Ingresar' : 'Crear cuenta'} <ArrowRight size={17}/></button>
-      </form><div className="auth-switch">{mode === 'login' ? '¿Todavía no tienes cuenta?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); }}> {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}</button></div><div className="install-row"><InstallButton/></div><div className="auth-legal"><ShieldCheck size={15}/> Tus datos se protegen con autenticación y permisos en la base de datos.</div></div><div className="auth-bottom">© {new Date().getFullYear()} Taxi Cerca <span>·</span> Movilidad con confianza</div></div></div>;
+      </form>{canRegister && <div className="auth-switch">{mode === 'login' ? '¿Todavía no tienes cuenta?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setNotice(''); }}> {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}</button></div>}<div className="install-row"><InstallButton/></div><div className="auth-legal"><ShieldCheck size={15}/> Tus datos se protegen con autenticación y permisos en la base de datos.</div></div><div className="auth-bottom">© {new Date().getFullYear()} Taxi Cerca <span>·</span> Movilidad con confianza</div></div></div>;
 }
 
 function Shell({ profile, role, onSignOut, children, active = 'Inicio' }) {
@@ -171,16 +191,20 @@ function AdminDashboard({ profile }) {
 export default function App() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const portal = usePortal();
   const clearSession = useCallback(() => { setToken(null); setProfile(null); }, []);
   useEffect(() => {
     if (!isSupabaseConfigured || !getToken()) { setLoading(false); return; }
     rpc('app_me').then(setProfile).catch(() => setToken(null)).finally(() => setLoading(false));
   }, []);
   useEffect(() => { window.addEventListener('session-expired', clearSession); return () => window.removeEventListener('session-expired', clearSession); }, [clearSession]);
+  useEffect(() => {
+    if (profile && portal && profile.role !== portal.role) { rpc('app_logout').catch(() => {}).finally(clearSession); }
+  }, [profile, portal, clearSession]);
   async function signOut() { try { await rpc('app_logout'); } catch { /* ya expiró */ } clearSession(); }
   if (!isSupabaseConfigured) return <ConfigNotice/>;
   if (loading) return <div className="loading-screen"><div className="loader-mark"><CarFront size={26}/></div><span>Preparando tu experiencia…</span></div>;
-  if (!profile) return <AuthScreen onAuth={setProfile}/>;
+  if (!profile || (portal && profile.role !== portal.role)) return <AuthScreen onAuth={setProfile} portal={portal}/>;
   const role = profile.role;
   return <Shell profile={profile} role={role} onSignOut={signOut} active={role === 'admin' ? 'Panel' : role === 'driver' ? 'Panel' : 'Inicio'}>{role === 'admin' ? <AdminDashboard profile={profile}/> : role === 'driver' ? <DriverDashboard profile={profile}/> : <UserDashboard profile={profile}/>}</Shell>;
 }
